@@ -1,8 +1,8 @@
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
-#include <Keypad.h>
-#include <Servo.h>
 #include <HX711.h>
+#include <Servo.h>
+#include <Keypad.h>
 
 // LCD setup
 LiquidCrystal_I2C lcd(0x27, 16, 2);
@@ -38,6 +38,8 @@ String inputWeight = "";
 float targetWeight = 0.0;
 bool dispensing = false;
 bool transactionComplete = false;
+float currentWeight = 0.0;
+unsigned long lastUpdateTime = 0;
 
 void setup() {
   Serial.begin(9600);
@@ -51,6 +53,8 @@ void setup() {
   lcd.print("Enter kilos:");
 
   dispenserServo.attach(SERVO_PIN);
+  dispenserServo.write(90); // Initial position (stopped)
+  
   pinMode(GREEN_LED, OUTPUT);
   pinMode(RED_LED, OUTPUT);
   pinMode(BUZZER_PIN, OUTPUT);
@@ -63,37 +67,52 @@ void setup() {
 void loop() {
   char key = keypad.getKey();
 
+  // Handle dispensing state
+  if (dispensing) {
+    monitorWeight();
+    return;
+  }
+
   if (key) {
     if (transactionComplete && key == '*') {
       // Reset system
-      lcd.clear();
-      lcd.print("Enter kilos:");
-      inputWeight = "";
-      transactionComplete = false;
-      digitalWrite(GREEN_LED, LOW);
-      digitalWrite(RED_LED, LOW);
+      resetSystem();
       return;
     }
 
     if (!dispensing && !transactionComplete) {
       if (key >= '0' && key <= '9') {
-        inputWeight += key;
-        lcd.setCursor(0, 1);
-        lcd.print(inputWeight + " kg     ");
+        if (inputWeight.length() < 4) { // Limit input length
+          inputWeight += key;
+          lcd.setCursor(0, 1);
+          lcd.print(inputWeight + " kg     ");
+        }
       } else if (key == '#') {
-        dispenserServo.write(90);
         targetWeight = inputWeight.toFloat(); // Convert input to float
-        dispenserServo.write(0);
+        
+        if (targetWeight <= 0 || targetWeight > 10) { // Validate input
+          lcd.clear();
+          lcd.print("Invalid amount!");
+          lcd.setCursor(0, 1);
+          lcd.print("0.1-10 kg only");
+          delay(2000);
+          lcd.clear();
+          lcd.print("Enter kilos:");
+          lcd.setCursor(0, 1);
+          lcd.print(inputWeight + " kg     ");
+          return;
+        }
+        
         inputWeight = "";
         
-
+        // Prepare for dispensing
         lcd.clear();
         lcd.print("Target: ");
         lcd.print(targetWeight, 3);
         lcd.print(" kg");
         delay(1000);
-
-        startDispensing(targetWeight); // Start motor and dispensing
+        
+        startDispensing();
       } else if (key == '*') {
         // Clear input if no transaction yet
         inputWeight = "";
@@ -104,44 +123,74 @@ void loop() {
   }
 }
 
-void startDispensing(float kilos) {
+void startDispensing() {
   dispensing = true;
-  float targetGrams = kilos * calibration_factor;
-
+  digitalWrite(RED_LED, HIGH); // Red light on during dispensing
+  
   lcd.clear();
   lcd.print("Dispensing...");
   
+  // Start servo motor
+  dispenserServo.write(0); // Adjust this value based on your servo orientation
+  
+  lastUpdateTime = millis();
+}
 
-  while (dispensing) {
-    float current = scale.get_units(); // Read raw data
-    float currentKg = current / calibration_factor;
-
+void monitorWeight() {
+  // Read the weight from scale
+  currentWeight = scale.get_units();
+  
+  // Update display every 200ms to avoid flicker
+  if (millis() - lastUpdateTime > 200) {
     lcd.setCursor(0, 1);
-    lcd.print("Now: ");
-    lcd.print(currentKg, 3);
-    lcd.print(" kg");
-
-    if (current >= targetGrams - 5) { // Stop within ~5g margin
-      dispenserServo.write(0); // Stop motor
-      digitalWrite(GREEN_LED, LOW);
-      digitalWrite(RED_LED, HIGH);
-
-      lcd.clear();
-      lcd.print("Done!");
-      tone(BUZZER_PIN, 1000, 500); // 500ms beep
-
-      delay(2000);
-      lcd.clear();
-      lcd.print("Press * to reset");
-
-      scale.tare(); // Reset scale
-      dispensing = false;
-      transactionComplete = true;
-    } else {
-      digitalWrite(GREEN_LED, HIGH);
-      digitalWrite(RED_LED, LOW);
-    }
-
-    delay(200);
+    lcd.print(currentWeight, 3);
+    lcd.print(" / ");
+    lcd.print(targetWeight, 3);
+    lcd.print("kg");
+    lastUpdateTime = millis();
   }
+  
+  // Check if target weight is reached or exceeded
+  if (currentWeight >= targetWeight) {
+    dispensing = false;
+    transactionComplete = true;
+    
+    // Stop the servo
+    dispenserServo.write(90);
+    
+    // Visual and audio feedback
+    digitalWrite(RED_LED, LOW);
+    digitalWrite(GREEN_LED, HIGH);
+    
+    // Beep 3 times
+    for (int i = 0; i < 3; i++) {
+      tone(BUZZER_PIN, 1000);
+      delay(200);
+      noTone(BUZZER_PIN);
+      delay(100);
+    }
+    
+    lcd.clear();
+    lcd.print("Complete!");
+    lcd.setCursor(0, 1);
+    lcd.print(currentWeight, 3);
+    lcd.print(" kg");
+    
+    // Let the user know they can reset
+    delay(2000);
+    lcd.setCursor(0, 0);
+    lcd.print("Press * to reset");
+  }
+}
+
+void resetSystem() {
+  lcd.clear();
+  lcd.print("Enter kilos:");
+  inputWeight = "";
+  targetWeight = 0.0;
+  dispensing = false;
+  transactionComplete = false;
+  digitalWrite(GREEN_LED, LOW);
+  digitalWrite(RED_LED, LOW);
+  scale.tare(); // Reset scale to zero
 }
