@@ -118,6 +118,7 @@ void loop() {
         inputWeight = "";
         lcd.setCursor(0, 1);
         lcd.print("                ");
+        // Make sure servo doesn't move here
       }
     }
   }
@@ -184,6 +185,9 @@ void monitorWeight() {
 }
 
 void resetSystem() {
+  // Make sure to set the servo to idle position first before doing anything else
+  dispenserServo.write(90);
+  
   lcd.clear();
   lcd.print("Enter kilos:");
   inputWeight = "";
