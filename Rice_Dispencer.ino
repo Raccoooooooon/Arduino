@@ -11,7 +11,7 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);
 #define DT 3
 #define SCK 2
 HX711 scale;
-float calibration_factor = 100; // <- Adjust after calibration
+float calibration_factor = 102655.00; // <- Adjust after calibration
 
 // Keypad setup
 const byte ROWS = 4;
@@ -42,7 +42,7 @@ float currentWeight = 0.0;
 unsigned long lastUpdateTime = 0;
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(19200);
 
   lcd.init();
   lcd.backlight();
