@@ -7,7 +7,7 @@ const int LOADCELL_SCK_PIN = 2;   // SCK pin
 HX711 scale;
 
 // Calibration factor - this will be adjusted during calibration
-float calibration_factor = -90000000;  // This is a starting value, will be adjusted during calibration
+float calibration_factor = 102655.00;  // This is a starting value, will be adjusted during calibration
                                     // The negative/positive value depends on your scale orientation
 
 void setup() {
