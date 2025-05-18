@@ -11,7 +11,7 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);
 #define DT 3
 #define SCK 2
 HX711 scale;
-float calibration_factor = 102655.00; // <- Adjust after calibration
+float calibration_factor = 102655.00; // Adjust this to your calibrated value
 
 // Keypad setup
 const byte ROWS = 4;
@@ -42,7 +42,7 @@ float currentWeight = 0.0;
 unsigned long lastUpdateTime = 0;
 
 void setup() {
-  Serial.begin(19200);
+  Serial.begin(9600);
 
   lcd.init();
   lcd.backlight();
@@ -119,6 +119,20 @@ void loop() {
         lcd.setCursor(0, 1);
         lcd.print("                ");
         // Make sure servo doesn't move here
+      } else if (key == 't') {
+        // Tare the scale
+        scale.tare();
+        lcd.clear();
+        lcd.print("Scale tared");
+        lcd.setCursor(0, 1);
+        lcd.print("Reading: 0.000 kg");
+        delay(2000);
+        lcd.clear();
+        lcd.print("Enter kilos:");
+        lcd.setCursor(0, 1);
+        if (inputWeight.length() > 0) {
+          lcd.print(inputWeight + " kg     ");
+        }
       }
     }
   }
@@ -139,7 +153,7 @@ void startDispensing() {
 
 void monitorWeight() {
   // Read the weight from scale
-  currentWeight = scale.get_units();
+  currentWeight = scale.get_units(3); // Average of 3 readings for stability
   
   // Update display every 200ms to avoid flicker
   if (millis() - lastUpdateTime > 200) {
@@ -177,6 +191,9 @@ void monitorWeight() {
     lcd.print(currentWeight, 3);
     lcd.print(" kg");
     
+    // Send sale data to ESP32
+    sendSaleData(currentWeight);
+    
     // Let the user know they can reset
     delay(2000);
     lcd.setCursor(0, 0);
@@ -196,5 +213,11 @@ void resetSystem() {
   transactionComplete = false;
   digitalWrite(GREEN_LED, LOW);
   digitalWrite(RED_LED, LOW);
-  scale.tare(); // Reset scale to zero
+  // Don't tare the scale automatically here, let user do it if needed
+}
+
+void sendSaleData(float weight) {
+  // Send weight data to ESP32
+  Serial.print(weight, 3);  // Send with 3 decimal places
+  Serial.println();         // End with newline
 }
