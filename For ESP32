@@ -4,23 +4,28 @@
 #include "time.h"
 
 // WiFi credentials
-const char* ssid = "YOUR_WIFI_SSID";
-const char* password = "YOUR_WIFI_PASSWORD";
+const char* ssid = BEBING WIFI;
+const char* password = 09078237236h;
 
 // NTP Server settings for date/time
 const char* ntpServer = "pool.ntp.org";
-const long gmtOffset_sec = 0;      // Adjust for your timezone (in seconds)
-const int daylightOffset_sec = 3600; // Adjust for daylight saving
+const long gmtOffset_sec = 28800;      // Adjust for your timezone (e.g., 28800 = GMT+8)
+const int daylightOffset_sec = 0;      // Adjust for daylight saving
 
 // Your web server endpoint
-const char* serverUrl = "https://your-server.com/api/sales";
+const char* serverUrl = file:///C:/Users/Admin/Downloads/InventorySystem0.2.0-main/InventorySystem0.2.0-main/sales.html;
+
+// Variable to store sales data
+float saleAmount = 0.0;
+String saleTimestamp = "";
+bool newSale = false;
 
 void setup() {
-  Serial.begin(9600);  // For ESP32 debugging
-  Serial2.begin(9600); // Use Serial2 to communicate with Arduino Uno
+  Serial.begin(9600);  // For ESP32 debugging and communication with Arduino Uno
 
   // Connect to WiFi
   WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
@@ -31,38 +36,63 @@ void setup() {
 
   // Initialize and get the time
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+  printLocalTime();
+  
+  Serial.println("ESP32 ready to receive sales data");
 }
 
 void loop() {
   // Check if data is available from Arduino Uno
-  if (Serial2.available()) {
-    String data = Serial2.readStringUntil('\n');
+  if (Serial.available()) {
+    String data = Serial.readStringUntil('\n');
     Serial.println("Received from Arduino: " + data);
     
-    // Get current time
-    struct tm timeinfo;
-    if(!getLocalTime(&timeinfo)){
-      Serial.println("Failed to obtain time");
-    } else {
-      char timeStringBuffer[30];
-      strftime(timeStringBuffer, sizeof(timeStringBuffer), "%Y-%m-%d %H:%M:%S", &timeinfo);
+    // Process the data if it's valid
+    if (data.length() > 0) {
+      saleAmount = data.toFloat();
       
-      // Create JSON document
-      DynamicJsonDocument doc(1024);
-      doc["weight"] = data.toFloat();
-      doc["timestamp"] = timeStringBuffer;
-      
-      // Send to server
-      if(WiFi.status() == WL_CONNECTED) {
-        String jsonData;
-        serializeJson(doc, jsonData);
-        sendToServer(jsonData);
+      // Get current time
+      struct tm timeinfo;
+      if(!getLocalTime(&timeinfo)) {
+        Serial.println("Failed to obtain time");
+        saleTimestamp = "Time unavailable";
+      } else {
+        char timeStringBuffer[30];
+        strftime(timeStringBuffer, sizeof(timeStringBuffer), "%Y-%m-%d %H:%M:%S", &timeinfo);
+        saleTimestamp = String(timeStringBuffer);
       }
+      
+      newSale = true;
+      Serial.println("New sale recorded: " + String(saleAmount) + " kg at " + saleTimestamp);
+      
+      // Send data to server
+      sendSaleToServer();
     }
   }
+  
+  delay(100);  // Short delay to prevent CPU hogging
 }
 
-void sendToServer(String jsonData) {
+void sendSaleToServer() {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi not connected. Reconnecting...");
+    WiFi.reconnect();
+    delay(5000);  // Wait for reconnection
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("WiFi reconnection failed");
+      return;
+    }
+  }
+  
+  // Create JSON document
+  DynamicJsonDocument doc(1024);
+  doc["weight"] = saleAmount;
+  doc["timestamp"] = saleTimestamp;
+  doc["device_id"] = "rice_dispenser_001";  // You can set a unique ID for your device
+  
+  String jsonData;
+  serializeJson(doc, jsonData);
+  
   HTTPClient http;
   
   // Begin HTTP connection
@@ -82,4 +112,14 @@ void sendToServer(String jsonData) {
   }
   
   http.end();
+  newSale = false;
+}
+
+void printLocalTime() {
+  struct tm timeinfo;
+  if(!getLocalTime(&timeinfo)) {
+    Serial.println("Failed to obtain time");
+    return;
+  }
+  Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
 }
