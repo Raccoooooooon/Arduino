@@ -1,19 +1,19 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
-#include <ArduinoJson.h>
+#include <Arduino.h>
 #include "time.h"
 
 // WiFi credentials
-const char* ssid = BEBING WIFI;
-const char* password = 09078237236h;
+const char* ssid = "BEBING WIFI";      // WiFi name should be in quotes
+const char* password = "09078237236h";  // Password should be in quotes
 
 // NTP Server settings for date/time
 const char* ntpServer = "pool.ntp.org";
 const long gmtOffset_sec = 28800;      // Adjust for your timezone (e.g., 28800 = GMT+8)
 const int daylightOffset_sec = 0;      // Adjust for daylight saving
 
-// Your web server endpoint
-const char* serverUrl = file:///C:/Users/Admin/Downloads/InventorySystem0.2.0-main/InventorySystem0.2.0-main/sales.html;
+// Your web server endpoint (should be a real URL, not a local file path)
+const char* serverUrl = "http://your-server-address.com/sales";  // Replace with your actual server URL
 
 // Variable to store sales data
 float saleAmount = 0.0;
@@ -35,91 +35,4 @@ void setup() {
   Serial.println(WiFi.localIP());
 
   // Initialize and get the time
-  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-  printLocalTime();
-  
-  Serial.println("ESP32 ready to receive sales data");
-}
-
-void loop() {
-  // Check if data is available from Arduino Uno
-  if (Serial.available()) {
-    String data = Serial.readStringUntil('\n');
-    Serial.println("Received from Arduino: " + data);
-    
-    // Process the data if it's valid
-    if (data.length() > 0) {
-      saleAmount = data.toFloat();
-      
-      // Get current time
-      struct tm timeinfo;
-      if(!getLocalTime(&timeinfo)) {
-        Serial.println("Failed to obtain time");
-        saleTimestamp = "Time unavailable";
-      } else {
-        char timeStringBuffer[30];
-        strftime(timeStringBuffer, sizeof(timeStringBuffer), "%Y-%m-%d %H:%M:%S", &timeinfo);
-        saleTimestamp = String(timeStringBuffer);
-      }
-      
-      newSale = true;
-      Serial.println("New sale recorded: " + String(saleAmount) + " kg at " + saleTimestamp);
-      
-      // Send data to server
-      sendSaleToServer();
-    }
-  }
-  
-  delay(100);  // Short delay to prevent CPU hogging
-}
-
-void sendSaleToServer() {
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi not connected. Reconnecting...");
-    WiFi.reconnect();
-    delay(5000);  // Wait for reconnection
-    if (WiFi.status() != WL_CONNECTED) {
-      Serial.println("WiFi reconnection failed");
-      return;
-    }
-  }
-  
-  // Create JSON document
-  DynamicJsonDocument doc(1024);
-  doc["weight"] = saleAmount;
-  doc["timestamp"] = saleTimestamp;
-  doc["device_id"] = "rice_dispenser_001";  // You can set a unique ID for your device
-  
-  String jsonData;
-  serializeJson(doc, jsonData);
-  
-  HTTPClient http;
-  
-  // Begin HTTP connection
-  http.begin(serverUrl);
-  http.addHeader("Content-Type", "application/json");
-  
-  // Send POST request
-  int httpResponseCode = http.POST(jsonData);
-  
-  // Check response
-  if (httpResponseCode > 0) {
-    String response = http.getString();
-    Serial.println("HTTP Response code: " + String(httpResponseCode));
-    Serial.println("Response: " + response);
-  } else {
-    Serial.println("Error on sending POST: " + String(httpResponseCode));
-  }
-  
-  http.end();
-  newSale = false;
-}
-
-void printLocalTime() {
-  struct tm timeinfo;
-  if(!getLocalTime(&timeinfo)) {
-    Serial.println("Failed to obtain time");
-    return;
-  }
-  Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
-}
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer
