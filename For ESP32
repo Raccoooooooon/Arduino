@@ -1,129 +1,116 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
-#include <Arduino.h>
-#include "time.h"
 #include <ArduinoJson.h>
+#include "time.h"
 
-// WiFi credentials - replace with your actual WiFi credentials
+// WiFi credentials
 const char* ssid = "AKATSUKI";
 const char* password = "2D6D629D";
 
-// NTP Server settings for date/time
-const char* ntpServer = "pool.ntp.org";
-const long gmtOffset_sec = 28800;      // GMT+8 (adjust to your timezone)
-const int daylightOffset_sec = 0;
-
-// Your web service endpoint - replace with your actual URL
-const char* serverUrl = "https://inventorysystem-156d6-default-rtdb.firebaseio.com/inventorysystem-156d6-default-rtdb.firebaseio.com";
-
-// Optional: Add authentication details if your API requires them
-const char* apiKey = "AIzaSyBzzfXvGm2bGm8ZWlZ6Ef28yB2zvzw9Kbc";  // If needed
+// Firebase Realtime DB endpoint
+const char* serverUrl = "https://inventorysystem-156d6-default-rtdb.firebaseio.com/sales.json";
+const char* apiKey = "AIzaSyBzzfXvGm2bGm8ZWlZ6Ef28yB2zvzw9Kbc";  // Optional
 const char* deviceId = "rice_dispenser_001";
 
-// Variable to store sales data
-float saleAmount = 0.0;
+// Timezone
+const char* ntpServer = "pool.ntp.org";
+const long gmtOffset_sec = 28800;
+const int daylightOffset_sec = 0;
+
+// Variables
 String saleTimestamp = "";
-bool newSale = false;
 
 void setup() {
-  Serial.begin(9600);  // For ESP32 debugging and communication with Arduino Uno
+  Serial.begin(9600);
 
-  // Connect to WiFi
   WiFi.begin(ssid, password);
   Serial.print("Connecting to WiFi");
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
-  Serial.println("");
-  Serial.print("Connected to WiFi with IP: ");
-  Serial.println(WiFi.localIP());
+  Serial.println("\nConnected to WiFi");
 
-  // Initialize and get the time
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-  
-  // Check if time was successfully obtained
   struct tm timeinfo;
-  if(getLocalTime(&timeinfo)){
-    Serial.println("Time synchronized with NTP server");
+  if (getLocalTime(&timeinfo)) {
+    Serial.println("Time synced");
   } else {
-    Serial.println("Failed to obtain time from NTP server");
+    Serial.println("Time sync failed");
   }
 }
 
 void loop() {
-  // Check if there's data from Arduino Uno
   if (Serial.available()) {
     String data = Serial.readStringUntil('\n');
-    saleAmount = data.toFloat();
-    if (saleAmount > 0) {
-      newSale = true;
-      
-      // Get current time
-      struct tm timeinfo;
-      if (getLocalTime(&timeinfo)) {
-        char timeStringBuff[50];
-        strftime(timeStringBuff, sizeof(timeStringBuff), "%Y-%m-%d %H:%M:%S", &timeinfo);
-        saleTimestamp = String(timeStringBuff);
-      } else {
-        saleTimestamp = String(millis()); // Fallback to millis if time not available
+    data.trim();
+
+    int kgIndex = data.indexOf("KG:");
+    int pesoIndex = data.indexOf("PESO:");
+
+    if (kgIndex != -1 && pesoIndex != -1) {
+      String kgStr = data.substring(kgIndex + 3, pesoIndex - 1);
+      String pesoStr = data.substring(pesoIndex + 5);
+
+      float kg = kgStr.toFloat();
+      float peso = pesoStr.toFloat();
+
+      if (kg > 0 && peso > 0) {
+        struct tm timeinfo;
+        if (getLocalTime(&timeinfo)) {
+          char timeBuffer[50];
+          strftime(timeBuffer, sizeof(timeBuffer), "%Y-%m-%d %H:%M:%S", &timeinfo);
+          saleTimestamp = String(timeBuffer);
+        } else {
+          saleTimestamp = String(millis());
+        }
+
+        Serial.print("Sending -> KG: ");
+        Serial.print(kg);
+        Serial.print(" Peso: ");
+        Serial.println(peso);
+
+        sendSaleData(kg, peso);
       }
-      
-      Serial.print("New sale recorded: ");
-      Serial.print(saleAmount);
-      Serial.print(" kg at ");
-      Serial.println(saleTimestamp);
-      
-      // Send the data to your web service
-      sendSaleData();
     }
   }
-  
-  delay(100); // Small delay to prevent CPU hogging
+
+  delay(100);
 }
 
-void sendSaleData() {
+void sendSaleData(float kg, float pesoAmount) {
   if (WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
-    
-    // Your Domain name with URL path or IP address with path
     http.begin(serverUrl);
-    
-    // Add headers
     http.addHeader("Content-Type", "application/json");
-    // If your API requires authentication
-    if(strlen(apiKey) > 0) {
+
+    if (strlen(apiKey) > 0) {
       http.addHeader("Authorization", "Bearer " + String(apiKey));
     }
-    
-    // Create JSON document
+
     DynamicJsonDocument doc(1024);
-    doc["weight"] = saleAmount;
+    doc["weight"] = kg;
+    doc["peso"] = pesoAmount;
     doc["timestamp"] = saleTimestamp;
     doc["device_id"] = deviceId;
     doc["status"] = "completed";
-    
-    // Serialize JSON to string
+
     String requestBody;
     serializeJson(doc, requestBody);
-    
-    // Send HTTP POST request
-    int httpResponseCode = http.POST(requestBody);
-    
-    if (httpResponseCode > 0) {
+
+    int responseCode = http.POST(requestBody);
+    if (responseCode > 0) {
       String response = http.getString();
-      Serial.println("HTTP Response code: " + String(httpResponseCode));
+      Serial.println("POST Success: " + String(responseCode));
       Serial.println("Response: " + response);
     } else {
-      Serial.print("Error on sending POST: ");
-      Serial.println(httpResponseCode);
+      Serial.print("POST Failed, Code: ");
+      Serial.println(responseCode);
     }
-    
-    // Free resources
+
     http.end();
   } else {
-    Serial.println("WiFi Disconnected");
-    // Try to reconnect
+    Serial.println("WiFi Disconnected. Reconnecting...");
     WiFi.begin(ssid, password);
   }
 }
