@@ -7,9 +7,9 @@
 const char* ssid = "AKATSUKI";
 const char* password = "2D6D629D";
 
-// Firebase Realtime DB endpoint
+// Firebase URL
 const char* serverUrl = "https://inventorysystem-156d6-default-rtdb.firebaseio.com/sales.json";
-const char* apiKey = "AIzaSyBzzfXvGm2bGm8ZWlZ6Ef28yB2zvzw9Kbc";  // Optional
+const char* apiKey = "AIzaSyBzzfXvGm2bGm8ZWlZ6Ef28yB2zvzw9Kbc";
 const char* deviceId = "rice_dispenser_001";
 
 // Timezone
@@ -17,11 +17,15 @@ const char* ntpServer = "pool.ntp.org";
 const long gmtOffset_sec = 28800;
 const int daylightOffset_sec = 0;
 
-// Variables
+// Serial pins
+#define RXD2 16
+#define TXD2 17
+
 String saleTimestamp = "";
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(9600);             // Debugging
+  Serial2.begin(9600, SERIAL_8N1, RXD2, TXD2); // Communication with Arduino
 
   WiFi.begin(ssid, password);
   Serial.print("Connecting to WiFi");
@@ -41,11 +45,10 @@ void setup() {
 }
 
 void loop() {
-  if (Serial.available()) {
-    String data = Serial.readStringUntil('\n');
-    data.trim();  // Remove any extra whitespace or newline characters
+  if (Serial2.available()) {
+    String data = Serial2.readStringUntil('\n');
+    data.trim();
 
-    // Check if data contains "KG:" and "PESO:"
     int kgIndex = data.indexOf("KG:");
     int pesoIndex = data.indexOf("PESO:");
 
@@ -57,7 +60,6 @@ void loop() {
       float peso = pesoStr.toFloat();
 
       if (kg > 0 && peso > 0) {
-        // Get current timestamp
         struct tm timeinfo;
         if (getLocalTime(&timeinfo)) {
           char timeBuffer[50];
@@ -67,31 +69,29 @@ void loop() {
           saleTimestamp = String(millis());
         }
 
-        Serial.print("Sending -> KG: ");
+        Serial.print("Received: KG=");
         Serial.print(kg);
-        Serial.print(" Peso: ");
+        Serial.print(" Peso=");
         Serial.println(peso);
 
-        // Send data to Firebase
         sendSaleData(kg, peso);
       }
     }
   }
 
-  delay(100);  // Delay to prevent excessive serial polling
+  delay(100);
 }
 
 void sendSaleData(float kg, float pesoAmount) {
   if (WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
-    http.begin(serverUrl);  // Firebase URL
+    http.begin(serverUrl);
     http.addHeader("Content-Type", "application/json");
 
     if (strlen(apiKey) > 0) {
-      http.addHeader("Authorization", "Bearer " + String(apiKey));  // Optional, if required
+      http.addHeader("Authorization", "Bearer " + String(apiKey));
     }
 
-    // Create a JSON object with sale data
     DynamicJsonDocument doc(1024);
     doc["weight"] = kg;
     doc["peso"] = pesoAmount;
@@ -102,7 +102,6 @@ void sendSaleData(float kg, float pesoAmount) {
     String requestBody;
     serializeJson(doc, requestBody);
 
-    // Send POST request to Firebase
     int responseCode = http.POST(requestBody);
     if (responseCode > 0) {
       String response = http.getString();
@@ -113,9 +112,9 @@ void sendSaleData(float kg, float pesoAmount) {
       Serial.println(responseCode);
     }
 
-    http.end();  // End HTTP connection
+    http.end();
   } else {
     Serial.println("WiFi Disconnected. Reconnecting...");
-    WiFi.begin(ssid, password);  // Reconnect to WiFi if disconnected
+    WiFi.begin(ssid, password);
   }
 }
