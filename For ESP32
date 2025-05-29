@@ -43,8 +43,9 @@ void setup() {
 void loop() {
   if (Serial.available()) {
     String data = Serial.readStringUntil('\n');
-    data.trim();
+    data.trim();  // Remove any extra whitespace or newline characters
 
+    // Check if data contains "KG:" and "PESO:"
     int kgIndex = data.indexOf("KG:");
     int pesoIndex = data.indexOf("PESO:");
 
@@ -56,6 +57,7 @@ void loop() {
       float peso = pesoStr.toFloat();
 
       if (kg > 0 && peso > 0) {
+        // Get current timestamp
         struct tm timeinfo;
         if (getLocalTime(&timeinfo)) {
           char timeBuffer[50];
@@ -70,24 +72,26 @@ void loop() {
         Serial.print(" Peso: ");
         Serial.println(peso);
 
+        // Send data to Firebase
         sendSaleData(kg, peso);
       }
     }
   }
 
-  delay(100);
+  delay(100);  // Delay to prevent excessive serial polling
 }
 
 void sendSaleData(float kg, float pesoAmount) {
   if (WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
-    http.begin(serverUrl);
+    http.begin(serverUrl);  // Firebase URL
     http.addHeader("Content-Type", "application/json");
 
     if (strlen(apiKey) > 0) {
-      http.addHeader("Authorization", "Bearer " + String(apiKey));
+      http.addHeader("Authorization", "Bearer " + String(apiKey));  // Optional, if required
     }
 
+    // Create a JSON object with sale data
     DynamicJsonDocument doc(1024);
     doc["weight"] = kg;
     doc["peso"] = pesoAmount;
@@ -98,6 +102,7 @@ void sendSaleData(float kg, float pesoAmount) {
     String requestBody;
     serializeJson(doc, requestBody);
 
+    // Send POST request to Firebase
     int responseCode = http.POST(requestBody);
     if (responseCode > 0) {
       String response = http.getString();
@@ -108,9 +113,9 @@ void sendSaleData(float kg, float pesoAmount) {
       Serial.println(responseCode);
     }
 
-    http.end();
+    http.end();  // End HTTP connection
   } else {
     Serial.println("WiFi Disconnected. Reconnecting...");
-    WiFi.begin(ssid, password);
+    WiFi.begin(ssid, password);  // Reconnect to WiFi if disconnected
   }
 }
