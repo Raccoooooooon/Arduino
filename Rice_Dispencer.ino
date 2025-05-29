@@ -2,6 +2,7 @@
 #include <HX711.h>
 #include <Keypad.h>
 #include <Servo.h>
+#include <SoftwareSerial.h>
 
 // LCD setup
 LiquidCrystal_I2C lcd(0x27, 16, 2);
@@ -32,6 +33,9 @@ Servo dispenserServo;
 #define RED_LED 13
 #define BUZZER_PIN A1
 
+// Software Serial to ESP32
+SoftwareSerial espSerial(A2, A3); // RX, TX (we use TX only)
+
 // Variables
 String inputAmount = "";
 float pricePerKg = 55.0;
@@ -43,6 +47,8 @@ unsigned long lastUpdateTime = 0;
 
 void setup() {
   Serial.begin(9600);
+  espSerial.begin(9600); // communication with ESP32
+
   lcd.init();
   lcd.backlight();
   lcd.setCursor(0, 0);
@@ -149,18 +155,15 @@ void monitorWeight() {
     dispensing = false;
     transactionComplete = true;
 
-    // Send formatted data
-    Serial.print("KG:");
-    Serial.print(currentWeight, 2);
-    Serial.print(",PESO:");
-    Serial.println(inputAmount);
+    // Send formatted data to ESP32
+    String dataToSend = "KG:" + String(currentWeight, 2) + ",PESO:" + inputAmount + "\n";
+    espSerial.print(dataToSend);
 
     delay(2000);
     lcd.clear();
     lcd.print("Transaction Done");
     lcd.setCursor(0, 1);
     lcd.print("Enter Peso:");
-
   }
 }
 
@@ -183,3 +186,4 @@ void resetSystem() {
   lcd.clear();
   lcd.print("Enter Pesos:");
   lcd.setCursor(0, 1);
+}
